@@ -1,0 +1,70 @@
+{
+  "name": "monanimal-rescue-runner",
+  "version": "1.0.0",
+  "description": "A blockchain-integrated endless runner game for Monad Mission 7 Game Jam - showcasing real-time score submission on Monad's high-TPS blockchain",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step needed - static HTML game'",
+    "start": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "keywords": [
+    "blockchain",
+    "gaming",
+    "web3",
+    "monad",
+    "endless-runner",
+    "phaser",
+    "javascript",
+    "gamedev",
+    "cryptocurrency",
+    "testnet"
+  ],
+  "author": "Monanimal Rescue Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/monanimal-rescue-runner"
+  },
+  "homepage": "https://monanimal-rescue-runner.vercel.app",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^32.0.0"
+  },
+  "vercel": {
+    "functions": {
+      "api/scores.js": {
+        "maxDuration": 10
+      }
+    },
+    "headers": [
+      {
+        "source": "/api/(.*)",
+        "headers": [
+          {
+            "key": "Access-Control-Allow-Origin",
+            "value": "*"
+          },
+          {
+            "key": "Access-Control-Allow-Methods",
+            "value": "GET, POST, OPTIONS"
+          },
+          {
+            "key": "Access-Control-Allow-Headers",
+            "value": "Content-Type"
+          }
+        ]
+      }
+    ]
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead",
+    "not ie 11"
+  ],
+  "dependencies": {}
+}

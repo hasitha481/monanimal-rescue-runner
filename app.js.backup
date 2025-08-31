@@ -1,0 +1,739 @@
+/**
+ * Monanimal Rescue Runner - Phase 3 with ONLY Better Jump
+ * Original difficulty + improved jump mechanics only
+ */
+
+// Game Configuration
+const GAME_CONFIG = {
+    type: Phaser.AUTO,
+    width: 800,
+    height: 600,
+    parent: 'game-canvas',
+    backgroundColor: '#1F1B24',
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 800 }, // BACK TO ORIGINAL
+            debug: false
+        }
+    },
+    scene: {
+        preload: preload,
+        create: create,
+        update: update
+    }
+};
+
+// Game State Variables - ORIGINAL DIFFICULTY
+let game;
+let player;
+let cursors;
+let score = 0;
+let gameOver = false;
+let gameStarted = false;
+let gameSpeed = 200; // ORIGINAL SPEED
+let jumpPower = -500; // ONLY JUMP IMPROVEMENT (was -400)
+
+// Game Objects
+let obstacles;
+let collectibles;
+let ground;
+let scoreText;
+let backgroundElements;
+let gameOverText;
+
+// Blockchain Integration Variables (unchanged)
+let web3;
+let contract;
+let userAccount = null;
+let provider;
+let signer;
+
+const CONTRACT_ADDRESS = '0x0ee58af8edba488118961db83475ad31290199fe';
+const CONTRACT_ABI = [
+    {
+        "inputs": [
+            {"internalType": "uint256", "name": "score", "type": "uint256"},
+            {"internalType": "string", "name": "username", "type": "string"}
+        ],
+        "name": "submitScore",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [{"internalType": "uint256", "name": "limit", "type": "uint256"}],
+        "name": "getTopScores",
+        "outputs": [
+            {
+                "components": [
+                    {"internalType": "address", "name": "playerAddress", "type": "address"},
+                    {"internalType": "uint256", "name": "score", "type": "uint256"},
+                    {"internalType": "string", "name": "username", "type": "string"},
+                    {"internalType": "uint256", "name": "timestamp", "type": "uint256"}
+                ],
+                "internalType": "struct MonanimalRescueRunner.LeaderboardEntry[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "getContractStats",
+        "outputs": [
+            {"internalType": "uint256", "name": "totalPlayers", "type": "uint256"},
+            {"internalType": "uint256", "name": "totalGames", "type": "uint256"},
+            {"internalType": "uint256", "name": "globalHigh", "type": "uint256"},
+            {"internalType": "address", "name": "globalHighHolder", "type": "address"},
+            {"internalType": "uint256", "name": "leaderboardSize", "type": "uint256"}
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+];
+
+const MONAD_TESTNET_CONFIG = {
+    chainId: '0x4CB2F',
+    chainName: 'Monad Testnet',
+    nativeCurrency: {
+        name: 'MON',
+        symbol: 'MON',
+        decimals: 18,
+    },
+    rpcUrls: ['https://testnet-rpc.monad.xyz'],
+    blockExplorerUrls: ['https://testnet-explorer.monad.xyz'],
+};
+
+// DOM Elements
+let connectWalletBtn;
+let disconnectWalletBtn;
+let walletInfo;
+let walletAddress;
+let currentScoreEl;
+let finalScoreEl;
+let gameOverModal;
+let restartBtn;
+let submitScoreBtn;
+let tutorialModal;
+let startGameBtn;
+
+// Initialize the application
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Monanimal Rescue Runner - Original Difficulty + Better Jump');
+    
+    initializeDOMElements();
+    initializeGame();
+    initializeBlockchain();
+    setupEventListeners();
+    
+    console.log('✅ Original challenge + improved jump ready!');
+});
+
+function initializeDOMElements() {
+    connectWalletBtn = document.getElementById('connect-wallet');
+    disconnectWalletBtn = document.getElementById('disconnect-wallet');
+    walletInfo = document.getElementById('wallet-info');
+    walletAddress = document.getElementById('wallet-address');
+    currentScoreEl = document.getElementById('current-score');
+    finalScoreEl = document.getElementById('final-score');
+    gameOverModal = document.getElementById('game-over-modal');
+    restartBtn = document.getElementById('restart-game');
+    submitScoreBtn = document.getElementById('submit-score');
+    tutorialModal = document.getElementById('tutorial-modal');
+    startGameBtn = document.getElementById('start-game');
+    
+    console.log('📋 DOM elements initialized');
+}
+
+function initializeGame() {
+    try {
+        game = new Phaser.Game(GAME_CONFIG);
+        console.log('🎮 Game initialized with original difficulty');
+    } catch (error) {
+        console.error('❌ Failed to initialize Phaser game:', error);
+        alert('Failed to initialize game. Please refresh the page.');
+    }
+}
+
+// Blockchain functions (unchanged from Phase 3)
+async function initializeBlockchain() {
+    console.log('⛓️ Initializing blockchain integration...');
+    
+    try {
+        if (typeof window.ethereum !== 'undefined') {
+            console.log('✅ MetaMask detected');
+            web3 = new Web3(window.ethereum);
+            
+            const accounts = await web3.eth.getAccounts();
+            if (accounts.length > 0) {
+                userAccount = accounts[0];
+                updateWalletUI(true);
+                console.log('✅ Already connected to:', userAccount);
+            }
+        } else {
+            console.log('⚠️ No Web3 wallet detected');
+        }
+        
+        if (CONTRACT_ADDRESS !== 'YOUR_CONTRACT_ADDRESS_HERE' && web3) {
+            initializeContract();
+        }
+        
+    } catch (error) {
+        console.error('❌ Blockchain initialization failed:', error);
+    }
+}
+
+function initializeContract() {
+    try {
+        contract = new web3.eth.Contract(CONTRACT_ABI, CONTRACT_ADDRESS);
+        console.log('✅ Smart contract initialized:', CONTRACT_ADDRESS);
+    } catch (error) {
+        console.error('❌ Contract initialization failed:', error);
+    }
+}
+
+async function connectWallet() {
+    console.log('🔌 Connecting to Monad testnet...');
+    
+    try {
+        if (typeof window.ethereum === 'undefined') {
+            alert('Please install MetaMask or a compatible Web3 wallet to play!');
+            window.open('https://metamask.io/', '_blank');
+            return;
+        }
+        
+        const accounts = await window.ethereum.request({
+            method: 'eth_requestAccounts'
+        });
+        
+        userAccount = accounts[0];
+        console.log('✅ Connected to wallet:', userAccount);
+        
+        await switchToMonadTestnet();
+        updateWalletUI(true);
+        
+        if (!contract && CONTRACT_ADDRESS !== 'YOUR_CONTRACT_ADDRESS_HERE') {
+            initializeContract();
+        }
+        
+        showNotification('Wallet connected successfully!', 'success');
+        
+    } catch (error) {
+        console.error('❌ Wallet connection failed:', error);
+        
+        if (error.code === 4001) {
+            showNotification('Wallet connection rejected by user', 'error');
+        } else {
+            showNotification('Failed to connect wallet', 'error');
+        }
+    }
+}
+
+async function switchToMonadTestnet() {
+    try {
+        await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: MONAD_TESTNET_CONFIG.chainId }],
+        });
+        console.log('✅ Switched to Monad testnet');
+    } catch (switchError) {
+        if (switchError.code === 4902) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [MONAD_TESTNET_CONFIG],
+                });
+                console.log('✅ Added Monad testnet to wallet');
+            } catch (addError) {
+                console.error('❌ Failed to add Monad testnet:', addError);
+                throw addError;
+            }
+        } else {
+            console.error('❌ Failed to switch to Monad testnet:', switchError);
+            throw switchError;
+        }
+    }
+}
+
+function disconnectWallet() {
+    console.log('🔌 Disconnecting wallet...');
+    
+    userAccount = null;
+    contract = null;
+    
+    updateWalletUI(false);
+    showNotification('Wallet disconnected', 'info');
+    
+    console.log('✅ Wallet disconnected');
+}
+
+function updateWalletUI(connected) {
+    if (connected && userAccount) {
+        if (connectWalletBtn) connectWalletBtn.style.display = 'none';
+        if (walletInfo) walletInfo.style.display = 'block';
+        if (walletAddress) {
+            walletAddress.textContent = userAccount.slice(0, 6) + '...' + userAccount.slice(-4);
+        }
+    } else {
+        if (connectWalletBtn) connectWalletBtn.style.display = 'block';
+        if (walletInfo) walletInfo.style.display = 'none';
+    }
+}
+
+async function submitScore() {
+    console.log('📤 Submitting score to Monad blockchain...');
+    
+    if (!userAccount) {
+        alert('Please connect your wallet first!');
+        return;
+    }
+    
+    if (!contract) {
+        alert('Smart contract not available. Please check contract deployment.');
+        return;
+    }
+    
+    const finalScore = Math.floor(score);
+    const username = `Player${userAccount.slice(-4)}`;
+    
+    try {
+        const txStatus = document.getElementById('tx-status');
+        if (txStatus) {
+            txStatus.className = 'tx-pending';
+            txStatus.textContent = '⏳ Submitting to Monad testnet...';
+        }
+        
+        const gasEstimate = await contract.methods
+            .submitScore(finalScore, username)
+            .estimateGas({ from: userAccount });
+            
+        const receipt = await contract.methods
+            .submitScore(finalScore, username)
+            .send({ 
+                from: userAccount,
+                gas: gasEstimate + 10000
+            });
+        
+        console.log('✅ Transaction successful:', receipt.transactionHash);
+        
+        if (txStatus) {
+            txStatus.className = 'tx-success';
+            txStatus.textContent = `✅ Score submitted! TX: ${receipt.transactionHash.slice(0, 10)}...`;
+        }
+        
+        setTimeout(loadLeaderboardData, 2000);
+        showNotification('Score submitted to blockchain!', 'success');
+        
+    } catch (error) {
+        console.error('❌ Score submission failed:', error);
+        
+        const txStatus = document.getElementById('tx-status');
+        if (txStatus) {
+            txStatus.className = 'tx-error';
+            txStatus.textContent = '❌ Submission failed: ' + (error.message || 'Unknown error');
+        }
+        
+        if (error.code === 4001) {
+            showNotification('Transaction rejected by user', 'error');
+        } else {
+            showNotification('Failed to submit score: ' + error.message, 'error');
+        }
+    }
+}
+
+async function loadLeaderboardData() {
+    if (!contract) {
+        loadPlaceholderLeaderboard();
+        return;
+    }
+    
+    try {
+        const topScores = await contract.methods.getTopScores(10).call();
+        
+        const leaderboardList = document.getElementById('leaderboard-list');
+        if (leaderboardList) {
+            leaderboardList.innerHTML = '';
+            
+            if (topScores.length === 0) {
+                leaderboardList.innerHTML = '<div class="leaderboard-item">No scores yet. Be the first!</div>';
+                return;
+            }
+            
+            topScores.forEach((entry, index) => {
+                const item = document.createElement('div');
+                item.className = 'leaderboard-item';
+                const isCurrentUser = entry.playerAddress.toLowerCase() === userAccount?.toLowerCase();
+                
+                item.innerHTML = `
+                    <span class="leaderboard-rank">#${index + 1}</span>
+                    <span class="leaderboard-username ${isCurrentUser ? 'current-user' : ''}">${entry.username}</span>
+                    <span class="leaderboard-score">${entry.score}</span>
+                `;
+                
+                if (isCurrentUser) {
+                    item.style.backgroundColor = 'rgba(139, 92, 246, 0.3)';
+                }
+                
+                leaderboardList.appendChild(item);
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Failed to load leaderboard:', error);
+        loadPlaceholderLeaderboard();
+    }
+}
+
+function loadPlaceholderLeaderboard() {
+    const placeholderData = [
+        { rank: 1, username: 'MonadMaster', score: 9999, address: '0xabcd...1234' },
+        { rank: 2, username: 'SpeedRunner', score: 8888, address: '0xefgh...5678' },
+        { rank: 3, username: 'MonanimalSaver', score: 7777, address: '0ijkl...9012' },
+        { rank: 4, username: 'You', score: Math.floor(score), address: userAccount || '0x0000...0000' }
+    ];
+    
+    const leaderboardList = document.getElementById('leaderboard-list');
+    if (leaderboardList) {
+        leaderboardList.innerHTML = '';
+        
+        placeholderData.forEach(entry => {
+            const item = document.createElement('div');
+            item.className = 'leaderboard-item';
+            item.innerHTML = `
+                <span class="leaderboard-rank">#${entry.rank}</span>
+                <span class="leaderboard-username">${entry.username}</span>
+                <span class="leaderboard-score">${entry.score}</span>
+            `;
+            leaderboardList.appendChild(item);
+        });
+    }
+}
+
+// =============================================================================
+// GAME FUNCTIONS - ORIGINAL DIFFICULTY + BETTER JUMP ONLY
+// =============================================================================
+
+function preload() {
+    console.log('📦 Loading ORIGINAL game assets...');
+    
+    // BACK TO ORIGINAL SPRITES
+    // Player (Monanimal) - Original size
+    this.add.graphics()
+        .fillStyle(0x8B5CF6)
+        .fillRect(0, 0, 32, 32)
+        .generateTexture('player', 32, 32);
+    
+    // Ground - Original
+    this.add.graphics()
+        .fillStyle(0x553C9A)
+        .fillRect(0, 0, 800, 50)
+        .generateTexture('ground', 800, 50);
+    
+    // Obstacle - ORIGINAL SIZE (challenging!)
+    this.add.graphics()
+        .fillStyle(0x8B4513)
+        .fillRect(0, 0, 30, 50)
+        .generateTexture('obstacle', 30, 50);
+    
+    // Collectible - Original
+    this.add.graphics()
+        .fillStyle(0xA855F7)
+        .fillCircle(15, 15, 15)
+        .generateTexture('collectible', 30, 30);
+    
+    console.log('✅ Original challenging assets loaded!');
+}
+
+function create() {
+    console.log('🏗️ Creating ORIGINAL challenging game...');
+    
+    createBackground(this);
+    
+    ground = this.physics.add.staticGroup();
+    ground.create(400, 575, 'ground');
+    
+    // Original player setup
+    player = this.physics.add.sprite(100, 500, 'player');
+    player.setBounce(0.2);
+    player.setCollideWorldBounds(true);
+    player.body.setGravityY(300);
+    
+    obstacles = this.physics.add.group();
+    collectibles = this.physics.add.group();
+    
+    this.physics.add.collider(player, ground);
+    this.physics.add.collider(obstacles, ground);
+    this.physics.add.collider(collectibles, ground);
+    
+    this.physics.add.collider(player, obstacles, hitObstacle, null, this);
+    this.physics.add.overlap(player, collectibles, collectItem, null, this);
+    
+    cursors = this.input.keyboard.createCursorKeys();
+    this.input.keyboard.on('keydown-SPACE', jump);
+    this.input.on('pointerdown', jump);
+    
+    scoreText = this.add.text(20, 20, 'Score: 0', {
+        fontSize: '24px',
+        fill: '#FFFFFF',
+        fontFamily: 'Arial'
+    });
+    
+    startSpawning(this);
+    
+    console.log('✅ Original challenging game created!');
+}
+
+function update() {
+    if (!gameStarted || gameOver) {
+        return;
+    }
+    
+    // ORIGINAL DIFFICULTY INCREASE
+    gameSpeed += 0.1;
+    score += 1;
+    updateScore(score);
+    
+    if (scoreText) {
+        scoreText.setText('Score: ' + Math.floor(score));
+    }
+    
+    obstacles.children.entries.forEach(obstacle => {
+        if (obstacle.x < -50) {
+            obstacle.destroy();
+        }
+    });
+    
+    collectibles.children.entries.forEach(collectible => {
+        if (collectible.x < -50) {
+            collectible.destroy();
+        }
+    });
+}
+
+function createBackground(scene) {
+    for (let i = 0; i < 5; i++) {
+        let bg = scene.add.rectangle(
+            Phaser.Math.Between(0, 800),
+            Phaser.Math.Between(0, 400),
+            Phaser.Math.Between(20, 50),
+            Phaser.Math.Between(20, 50),
+            0x6B46C1,
+            0.3
+        );
+        
+        scene.tweens.add({
+            targets: bg,
+            y: bg.y - 100,
+            duration: Phaser.Math.Between(3000, 5000),
+            repeat: -1,
+            yoyo: true,
+            ease: 'Sine.easeInOut'
+        });
+    }
+}
+
+function startSpawning(scene) {
+    // ORIGINAL SPAWN RATES (challenging!)
+    scene.time.addEvent({
+        delay: Phaser.Math.Between(2000, 3000), // Original timing
+        callback: spawnObstacle,
+        callbackScope: scene,
+        loop: true
+    });
+    
+    scene.time.addEvent({
+        delay: Phaser.Math.Between(4000, 6000), // Original timing
+        callback: spawnCollectible,
+        callbackScope: scene,
+        loop: true
+    });
+}
+
+function spawnObstacle() {
+    if (!gameStarted || gameOver) return;
+    
+    // ORIGINAL OBSTACLE SPAWN
+    let obstacle = obstacles.create(850, 500, 'obstacle');
+    obstacle.setVelocityX(-gameSpeed);
+    obstacle.body.setGravityY(500);
+    
+    console.log('🐢 Original challenging obstacle spawned');
+}
+
+function spawnCollectible() {
+    if (!gameStarted || gameOver) return;
+    
+    let collectible = collectibles.create(850, Phaser.Math.Between(300, 500), 'collectible');
+    collectible.setVelocityX(-gameSpeed);
+    collectible.body.setGravityY(100);
+    
+    console.log('💜 Collectible spawned');
+}
+
+// ONLY JUMP IS IMPROVED - EVERYTHING ELSE ORIGINAL
+function jump() {
+    if (!gameStarted || gameOver) return;
+    
+    if (player.body.touching.down) {
+        player.setVelocityY(jumpPower); // -500 instead of -400
+        console.log('🦘 Better jump! Power:', jumpPower);
+    }
+}
+
+function hitObstacle(player, obstacle) {
+    console.log('💥 Hit obstacle - Game Over!');
+    
+    gameOver = true;
+    gameStarted = false;
+    
+    player.setTint(0xff0000);
+    obstacle.setTint(0xff0000);
+    
+    endGame();
+}
+
+function collectItem(player, collectible) {
+    console.log('✨ Collected Monanimal! +50 points');
+    
+    // ORIGINAL POINTS
+    score += 50;
+    updateScore(score);
+    
+    collectible.destroy();
+    
+    let scene = collectible.scene;
+    let particles = scene.add.particles(collectible.x, collectible.y, 'collectible', {
+        speed: { min: 50, max: 100 },
+        scale: { start: 0.3, end: 0 },
+        lifespan: 300
+    });
+    
+    setTimeout(() => particles.destroy(), 500);
+}
+
+function startGame() {
+    if (tutorialModal) {
+        tutorialModal.style.display = 'none';
+    }
+    
+    gameStarted = true;
+    gameOver = false;
+    score = 0;
+    gameSpeed = 200; // ORIGINAL SPEED
+    
+    if (player) {
+        player.setPosition(100, 500);
+        player.clearTint();
+        player.setVelocity(0, 0);
+    }
+    
+    if (obstacles) obstacles.clear(true, true);
+    if (collectibles) collectibles.clear(true, true);
+    
+    updateScore(0);
+    
+    console.log('🚀 Original challenging game started!');
+}
+
+function restartGame() {
+    if (gameOverModal) {
+        gameOverModal.style.display = 'none';
+    }
+    
+    startGame();
+}
+
+function endGame() {
+    gameOver = true;
+    gameStarted = false;
+    
+    if (finalScoreEl) {
+        finalScoreEl.textContent = Math.floor(score);
+    }
+    
+    if (gameOverModal) {
+        gameOverModal.style.display = 'flex';
+    }
+    
+    let scene = player.scene;
+    scene.add.text(400, 300, `Game Over!\nScore: ${Math.floor(score)}\nPress RESTART to play again`, {
+        fontSize: '32px',
+        fill: '#FFFFFF',
+        align: 'center',
+        fontFamily: 'Arial'
+    }).setOrigin(0.5);
+}
+
+function setupEventListeners() {
+    if (connectWalletBtn) {
+        connectWalletBtn.addEventListener('click', connectWallet);
+    }
+    
+    if (disconnectWalletBtn) {
+        disconnectWalletBtn.addEventListener('click', disconnectWallet);
+    }
+    
+    if (startGameBtn) {
+        startGameBtn.addEventListener('click', startGame);
+    }
+    
+    if (restartBtn) {
+        restartBtn.addEventListener('click', restartGame);
+    }
+    
+    if (submitScoreBtn) {
+        submitScoreBtn.addEventListener('click', submitScore);
+    }
+    
+    const viewLeaderboardBtn = document.getElementById('view-leaderboard');
+    if (viewLeaderboardBtn) {
+        viewLeaderboardBtn.addEventListener('click', toggleLeaderboard);
+    }
+    
+    if (window.ethereum) {
+        window.ethereum.on('accountsChanged', (accounts) => {
+            if (accounts.length === 0) {
+                disconnectWallet();
+            } else {
+                userAccount = accounts[0];
+                updateWalletUI(true);
+                console.log('🔄 Account changed to:', userAccount);
+            }
+        });
+        
+        window.ethereum.on('chainChanged', (chainId) => {
+            console.log('🔄 Chain changed to:', chainId);
+            window.location.reload();
+        });
+    }
+    
+    console.log('🎯 Event listeners set up');
+}
+
+function toggleLeaderboard() {
+    const leaderboardSection = document.getElementById('leaderboard-section');
+    if (leaderboardSection) {
+        const isVisible = leaderboardSection.style.display !== 'none';
+        leaderboardSection.style.display = isVisible ? 'none' : 'block';
+        
+        if (!isVisible) {
+            loadLeaderboardData();
+        }
+    }
+}
+
+function updateScore(newScore) {
+    score = newScore;
+    if (currentScoreEl) {
+        currentScoreEl.textContent = `Score: ${Math.floor(score)}`;
+    }
+}
+
+function showNotification(message, type = 'info') {
+    console.log(`📢 ${type.toUpperCase()}: ${message}`);
+}
+
+console.log('🏁 Original Challenge + Better Jump Ready! 🦘💪');
